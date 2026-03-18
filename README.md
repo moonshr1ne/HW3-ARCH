@@ -1,83 +1,115 @@
-# Flight Booking: gRPC + Redis
+# Flight Booking System (gRPC + Redis)
 
-Готовый каркас под 8 баллов:
-- 2 микросервиса: Booking Service (REST) и Flight Service (gRPC)
-- 2 PostgreSQL
-- миграции при старте
-- транзакции и `SELECT FOR UPDATE`
-- gRPC API key auth через metadata
-- Redis cache-aside с TTL и invalidation
-- retry c exponential backoff (100ms, 200ms, 400ms)
-- retry только для `UNAVAILABLE` и `DEADLINE_EXCEEDED`
-- идемпотентный `ReserveSeats` по `booking_id`
-- circuit breaker уже тоже оставлен в проекте, хотя для 8 баллов он не обязателен
+## Overview
 
-## Run
+This project implements a distributed flight booking system using a microservices architecture.
 
-```bash
+The system consists of two services:
+
+- Booking Service (REST API) — handles bookings and client requests
+- Flight Service (gRPC API) — manages flights and seat availability
+
+The services communicate via gRPC, and each service has its own PostgreSQL database.
+Redis is used for caching in the Flight Service.
+
+## Architecture
+
+Client → Booking Service (REST) → Flight Service (gRPC)
+                     ↓                          ↓
+                PostgreSQL               PostgreSQL + Redis
+
+## Features
+
+### Core (1–4 points)
+- Microservices architecture (2 services)
+- Separate PostgreSQL databases
+- REST API (Booking Service)
+- gRPC API (Flight Service)
+- Flight search, booking, cancellation
+- Proper business logic and error handling
+
+### Intermediate (5–7 points)
+- Transactional consistency
+- Row-level locking using SELECT FOR UPDATE
+- gRPC authentication via API key (metadata)
+- Redis cache (Cache-Aside strategy)
+- TTL for all cache entries
+- Cache invalidation after mutations
+- Cache hit/miss logging
+
+### Advanced (8 points)
+- Retry mechanism with exponential backoff
+  (100ms → 200ms → 400ms)
+- Retry only for UNAVAILABLE and DEADLINE_EXCEEDED
+- Idempotent ReserveSeats using booking_id
+- No duplicate reservations on retry
+
+## Tech Stack
+
+- Python (FastAPI + gRPC)
+- PostgreSQL
+- Redis
+- Docker / Docker Compose
+
+## How to Run
+
 docker compose up --build
-```
 
-## Services
+## API Access
 
-- Booking REST API: http://localhost:8080
-- Swagger UI: http://localhost:8080/docs
-- Flight gRPC: localhost:50051
-- Redis: localhost:6379
+Swagger UI:
+http://localhost:8080/docs
 
-## Что уже закрывает по критериям
+## Example Flow
 
-### 1-4 балла
-- gRPC контракт Flight Service
-- 2 отдельные БД
-- REST + gRPC
-- межсервисное взаимодействие при create/cancel booking
+1. Search flights:
+GET /flights?origin=SVO&destination=LED&date=2026-04-01
 
-### 5-7 баллов
-- транзакционная целостность
-- аутентификация межсервисных вызовов
-- Redis cache-aside
+2. Create booking:
+POST /bookings
 
-### 8 баллов
-- retry с exponential backoff
-- retry только для временных gRPC ошибок
-- `ReserveSeats` идемпотентен: повторный вызов с тем же `booking_id` не создаёт дубликат
+{
+  "user_id": "user-1",
+  "flight_id": "11111111-1111-1111-1111-111111111111",
+  "passenger_name": "Ivan Ivanov",
+  "passenger_email": "ivan@example.com",
+  "seat_count": 2
+}
 
-## Основные ручки
+3. Cancel booking:
+POST /bookings/{id}/cancel
 
-- `GET /flights?origin=SVO&destination=LED&date=2026-04-01`
-- `GET /flights/{id}`
-- `POST /bookings`
-- `GET /bookings/{id}`
-- `GET /bookings?user_id=user-1`
-- `POST /bookings/{id}/cancel`
+## Consistency & Transactions
 
-## Пример создания бронирования
+- Seat reservation is atomic
+- Uses SELECT FOR UPDATE to prevent race conditions
+- No partial updates
 
-```bash
-curl -X POST http://localhost:8080/bookings \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user-1",
-    "flight_id": "11111111-1111-1111-1111-111111111111",
-    "passenger_name": "Ivan Ivanov",
-    "passenger_email": "ivan@example.com",
-    "seat_count": 2
-  }'
-```
+## Caching (Redis)
 
-## Проверка бизнес-флоу
+- Cache-Aside strategy
+- flight:{id}
+- search:{origin}:{destination}:{date}
+- TTL: 5–10 minutes
+- Cache invalidation after ReserveSeats and ReleaseReservation
 
-1. Найти рейс `SVO -> LED` на `2026-04-01`
-2. Создать booking на 2 места
-3. Повторно проверить рейс: `available_seats` станет `98`
-4. Отменить booking
-5. Ещё раз проверить рейс: `available_seats` снова станет `100`
+## Fault Tolerance
 
-## Для демонстрации 7-8 баллов
+- Retry with exponential backoff
+- Idempotent operations prevent duplicate reservations
 
-- транзакции: смотри `flight-service/app/service.py`
-- auth interceptor: `flight-service/app/auth.py`
-- retry: `booking-service/app/grpc_client.py`
-- circuit breaker: `booking-service/app/circuit_breaker.py`
-- Redis cache: `flight-service/app/cache.py`
+## gRPC Authentication
+
+- API key via metadata
+- Unauthorized requests return UNAUTHENTICATED
+
+## Project Structure
+
+booking-service/
+flight-service/
+proto/
+docker-compose.yml
+
+## Author
+
+Student project for Distributed Systems / SOA course
