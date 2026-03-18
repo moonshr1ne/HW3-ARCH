@@ -110,6 +110,3 @@ flight-service/
 proto/
 docker-compose.yml
 
-## Author
-
-Student project for Distributed Systems / SOA course
