@@ -1,0 +1,110 @@
+services:
+  booking-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${BOOKING_DB_USER:-booking_user}
+      POSTGRES_PASSWORD: ${BOOKING_DB_PASSWORD:-booking_pass}
+      POSTGRES_DB: ${BOOKING_DB_NAME:-booking_db}
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BOOKING_DB_USER:-booking_user} -d ${BOOKING_DB_NAME:-booking_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  flight-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${FLIGHT_DB_USER:-flight_user}
+      POSTGRES_PASSWORD: ${FLIGHT_DB_PASSWORD:-flight_pass}
+      POSTGRES_DB: ${FLIGHT_DB_NAME:-flight_db}
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FLIGHT_DB_USER:-flight_user} -d ${FLIGHT_DB_NAME:-flight_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis-master:
+    image: redis:7
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./redis/master/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+
+  redis-replica:
+    image: redis:7
+    depends_on:
+      - redis-master
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./redis/replica/redis.conf:/usr/local/etc/redis/redis.conf:ro
+
+  redis-sentinel:
+    image: redis:7
+    depends_on:
+      - redis-master
+      - redis-replica
+    command: ["redis-sentinel", "/usr/local/etc/redis/sentinel.conf"]
+    volumes:
+      - ./redis/sentinel/sentinel.conf:/usr/local/etc/redis/sentinel.conf:ro
+    ports:
+      - "26379:26379"
+
+  flight-service:
+    build:
+      context: .
+      dockerfile: flight-service/Dockerfile
+    environment:
+      FLIGHT_DB_HOST: flight-db
+      FLIGHT_DB_PORT: 5432
+      FLIGHT_DB_USER: ${FLIGHT_DB_USER:-flight_user}
+      FLIGHT_DB_PASSWORD: ${FLIGHT_DB_PASSWORD:-flight_pass}
+      FLIGHT_DB_NAME: ${FLIGHT_DB_NAME:-flight_db}
+      FLIGHT_GRPC_PORT: 50051
+      GRPC_API_KEY: ${GRPC_API_KEY:-super-secret-key}
+      REDIS_MODE: standalone
+      REDIS_HOST: redis-master
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_TTL_SECONDS: 300
+      REDIS_SENTINEL_HOST: redis-sentinel
+      REDIS_SENTINEL_PORT: 26379
+      REDIS_SENTINEL_MASTER: mymaster
+      PYTHONUNBUFFERED: 1
+    depends_on:
+      flight-db:
+        condition: service_healthy
+      redis-master:
+        condition: service_started
+    ports:
+      - "50051:50051"
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: booking-service/Dockerfile
+    environment:
+      BOOKING_DB_HOST: booking-db
+      BOOKING_DB_PORT: 5432
+      BOOKING_DB_USER: ${BOOKING_DB_USER:-booking_user}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-booking_pass}
+      BOOKING_DB_NAME: ${BOOKING_DB_NAME:-booking_db}
+      BOOKING_HTTP_PORT: 8080
+      FLIGHT_GRPC_TARGET: flight-service:50051
+      GRPC_API_KEY: ${GRPC_API_KEY:-super-secret-key}
+      GRPC_TIMEOUT_SECONDS: 3
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: ${CIRCUIT_BREAKER_FAILURE_THRESHOLD:-5}
+      CIRCUIT_BREAKER_RESET_TIMEOUT: ${CIRCUIT_BREAKER_RESET_TIMEOUT:-15}
+      CIRCUIT_BREAKER_WINDOW_SECONDS: ${CIRCUIT_BREAKER_WINDOW_SECONDS:-30}
+      PYTHONUNBUFFERED: 1
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      flight-service:
+        condition: service_started
+    ports:
+      - "8080:8080"

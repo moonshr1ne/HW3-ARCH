@@ -1,0 +1,6 @@
+INSERT INTO flights (id, flight_number, airline, origin, destination, departure_time, arrival_time, total_seats, available_seats, price, status)
+VALUES
+('11111111-1111-1111-1111-111111111111', 'SU1001', 'Aeroflot', 'SVO', 'LED', '2026-04-01T09:00:00Z', '2026-04-01T10:30:00Z', 100, 100, 5500.00, 'SCHEDULED'),
+('22222222-2222-2222-2222-222222222222', 'S71001', 'S7 Airlines', 'SVO', 'LED', '2026-04-01T12:00:00Z', '2026-04-01T13:30:00Z', 120, 120, 6100.00, 'SCHEDULED'),
+('33333333-3333-3333-3333-333333333333', 'DP2001', 'Pobeda', 'VKO', 'LED', '2026-04-01T15:00:00Z', '2026-04-01T16:30:00Z', 90, 90, 4300.00, 'SCHEDULED')
+ON CONFLICT (id) DO NOTHING;
